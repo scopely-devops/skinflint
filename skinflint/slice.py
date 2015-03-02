@@ -16,7 +16,7 @@ import pytz
 
 from botocore.utils import parse_to_aware_datetime
 
-from skinflint.metric import TotalMetric
+from skinflint.metric import TotalUsage
 
 
 class Slice(object):
@@ -32,7 +32,7 @@ class Slice(object):
             self.end = end
         self._retain_lineitems = retain_lineitems
         self._lineitems = []
-        self.metrics = [TotalMetric()]
+        self.metrics = [TotalUsage()]
 
     def __add__(self, other):
         for metric, other_metric in zip(self.metrics, other.metrics):
@@ -54,9 +54,7 @@ class SuperSlice(object):
     SkipTypes = ['InvoiceTotal', 'StatementTotal', 'Rounding']
 
     def __init__(self):
-        self.start = None
-        self.end = None
-        self.slices = []
+        self.slices = {}
         self.non_lineitems = []
         self.onetime_charges = []
 
@@ -64,15 +62,15 @@ class SuperSlice(object):
         if not slice.start and not slice.end:
             self.non_lineitems.append(slice)
         else:
-            if self.start is None:
-                self.start = slice.start
-            elif self.start > slice.start:
-                self.start = slice.start
-            if self.end is None:
-                self.end = slice.end
-            elif self.end < slice.end:
-                self.end = slice.end
-            self.slices.append(slice)
+            slice_key = '%s-%s' % (slice.start, slice.end)
+            if slice_key not in self.slices:
+                self.slices[slice_key] = slice
+            else:
+                current_slice = self.slices[slice_key]
+                for n, metric in enumerate(slice.metrics):
+                    for dimension in metric.data:
+                        current_slice.metrics[n].data[dimension].update(
+                            metric.data[dimension])
 
     def load(self, billreader):
         start = None
@@ -101,8 +99,8 @@ class SuperSlice(object):
 
     def aggregate(self, start, end):
         aggregate_slice = Slice(start, end)
-        print(aggregate_slice)
-        for slice in self.slices:
+        for slice_key in self.slices:
+            slice = self.slices[slice_key]
             if slice.start >= start and slice.end <= end:
                 aggregate_slice + slice
         return aggregate_slice

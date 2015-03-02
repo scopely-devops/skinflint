@@ -28,101 +28,101 @@ def total_seconds(delta):
              * 10 ** 6) / 10 ** 6)
 
 
-class TotalMetric(object):
+class Metric(object):
 
-    Dimensions = {
-        'account': 'LinkedAccountId',
-        'service': 'ProductName'}
+    Dimensions = {}
 
     def __init__(self):
-        self.name = 'Total Usage'
-        self._totals = {
-            'usage': decimal.Decimal('0.0'),
-            'onetime': decimal.Decimal('0.0'),
-        }
+        self.data = {}
         for dim in self.Dimensions:
-            self._totals[dim] = {}
+            self.data[dim] = {}
 
     def __repr__(self):
-        return self.name
+        return self.__class__.__name__
 
     def __add__(self, other):
-        for dimension in self._totals:
-            if isinstance(self._totals[dimension], dict):
-                all_subdims = set(self._totals[dimension].keys())
-                all_subdims.update(other._totals[dimension].keys())
-                for subdim in all_subdims:
-                    if subdim not in self._totals[dimension]:
-                        self._totals[dimension][subdim] = decimal.Decimal('0.0')
-                    self._totals[dimension][subdim] += other._totals[dimension].get(subdim, decimal.Decimal('0.0'))
-            else:
-                self._totals[dimension] += other._totals.get(dimension, decimal.Decimal('0.0'))
-
-    @property
-    def totals(self):
-        return self._totals
+        for dimension in self.data:
+            all_subdims = set(self.data[dimension].keys())
+            all_subdims.update(other.data[dimension].keys())
+            for subdim in all_subdims:
+                if subdim not in self.data[dimension]:
+                    self.data[dimension][subdim] = decimal.Decimal('0.0')
+                other_value = other.data[dimension].get(
+                    subdim, decimal.Decimal('0.0'))
+                self.data[dimension][subdim] += other_value
 
     def add(self, data):
-        for dim_name in self.Dimensions:
-            key = self.Dimensions[dim_name]
-            value = data[key]
-            if value not in self._totals[dim_name]:
-                self._totals[dim_name][value] = decimal.Decimal('0.0')
-            self._totals[dim_name][value] += data['UnBlendedCost']
-        if data['ReservedInstance'] == 'Y' and not data['SubscriptionId']:
-            self._totals['onetime'] += data['UnBlendedCost']
-        else:
-            self._totals['usage'] += data['UnBlendedCost']
+        for dimension in self.Dimensions:
+            dimension_key = self.Dimensions[dimension](data)
+            if dimension_key not in self.data[dimension]:
+                self.data[dimension][dimension_key] = decimal.Decimal('0.0')
+            self.data[dimension][dimension_key] += data['UnBlendedCost']
 
     def dimensions(self):
-        return self._totals.keys()
+        return self.data.keys()
 
     def dump(self):
-        for dimension in self._totals:
+        for dimension in self.data:
             print('Dimension: %s' % dimension)
-            value = self._totals[dimension]
-            if isinstance(value, dict):
-                for key in value:
-                    print('\t%s = %s' % (key, value[key]))
-            else:
-                print('\t%s = %s' % (dimension, value))
+            value = self.data[dimension]
+            for key in value:
+                print('\t%s = %s' % (key, value[key]))
 
 
-#
-# The following metrics need to be converted to the newer style metric
-# as shown above.
-#
-class InstanceCostMetric(object):
+def usage_or_onetime(d):
+    if d['ReservedInstance'] == 'Y' and not d['SubscriptionId']:
+        return 'onetime'
+    else:
+        return 'usage'
 
-    def __init__(self):
-        self.name = 'InstanceCost'
-        self._instance_types = {}
-        self._accounts = {}
-        self._regions = {}
-        self._total = decimal.Decimal('0.0')
+ServiceMap = {
+    'AWS Data Pipeline': 'datapipeline',
+    'Amazon DynamoDB': 'dynamodb',
+    'Amazon ElastiCache': 'elasticache',
+    'Amazon Elastic Compute Cloud': 'ec2',
+    'Amazon Elastic MapReduce': 'emr',
+    'Amazon Kinesis': 'kinesis',
+    'Amazon RDS Service': 'rds',
+    'Amazon Redshift': 'redshift',
+    'Amazon Route 53': 'route53',
+    'Amazon Simple Notification Service': 'sns',
+    'Amazon Simple Queue Service': 'sqs',
+    'Amazon Simple Storage Service': 's3',
+    'Amazon SimpleDB': 'simpledb',
+    'AWS Key Management Service': 'kms',
+}
 
-    def add(self, data):
-        if data['UsageType'].startswith('BoxUsage'):
-            if ':' in data['UsageType']:
-                _, instance_type = data['UsageType'].split(':')
-            else:
-                instance_type = 'none'
-            if instance_type not in self._instance_types:
-                self._instance_types[instance_type] = decimal.Decimal('0.0')
-            self._instance_types[instance_type] += data['UnBlendedCost']
-            account = data['LinkedAccountId']
-            if account not in self._accounts:
-                self._accounts[account] = decimal.Decimal('0.0')
-            self._accounts[account] += data['UnBlendedCost']
-            self._total += data['UnBlendedCost']
 
-    def dimensions(self):
-        for key in self._accounts:
-            value = self._accounts[key]
-            print('Account:%s = %s' % (key, value))
-        for key in self._instance_types:
-            value = self._instance_types[key]
-            print('InstanceType:%s = %s' % (key, value))
+def account_service(d):
+    product_name = d['ProductName']
+    product_name = ServiceMap.get(product_name, product_name)
+    dimension = '%s:%s' % (d['LinkedAccountId'], product_name)
+    return dimension
+
+
+class TotalUsage(Metric):
+
+    Dimensions = {
+        'account.service': account_service,
+        'total': usage_or_onetime,
+    }
+
+
+def instance_type(d):
+    if ':' in d['UsageType']:
+        _, instance_type = d['UsageType'].split(':')
+    else:
+        instance_type = 'none'
+    return instance_type
+
+
+class InstanceCost(Metric):
+
+    Dimensions = {
+        'account': lambda d: d['LinkedAccountId'],
+        'availability_zone': lambda d: d['AvailabilityZone'],
+        'instance_type': instance_type,
+    }
 
 
 class DataTransferMetric(object):
