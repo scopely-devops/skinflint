@@ -17,9 +17,9 @@ import decimal
 
 class DetailedBillingReader(object):
 
-    def __init__(self, file):
-        self.file = file
-        self._fp = open(file)
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self._fp = open(filepath)
         self._reader = csv.reader(self._fp)
         self.headers = next(self._reader)
 
