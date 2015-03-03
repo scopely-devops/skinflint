@@ -13,11 +13,32 @@
 
 import decimal
 import datetime
-
-import botocore.utils
-
+import re
 
 Epoch = datetime.datetime(1970, 1, 1)
+
+ServiceMap = {
+    'AWS Data Pipeline': 'datapipeline',
+    'Amazon DynamoDB': 'dynamodb',
+    'Amazon ElastiCache': 'elasticache',
+    'Amazon Elastic Compute Cloud': 'ec2',
+    'Amazon Elastic MapReduce': 'emr',
+    'Amazon Kinesis': 'kinesis',
+    'Amazon RDS Service': 'rds',
+    'Amazon Redshift': 'redshift',
+    'Amazon Route 53': 'route53',
+    'Amazon Simple Notification Service': 'sns',
+    'Amazon Simple Queue Service': 'sqs',
+    'Amazon Simple Storage Service': 's3',
+    'Amazon SimpleDB': 'simpledb',
+    'AWS Key Management Service': 'kms',
+    'AmazonCloudWatch': 'cloudwatch',
+    'Amazon CloudFront': 'cloudfront',
+    'Amazon Simple Email Service': 'ses',
+    'AWS Lambda': 'lambda',
+    'Amazon Virtual Private Cloud': 'vpc',
+    'Amazon CloudSearch': 'cloudsearch'
+}
 
 
 def total_seconds(delta):
@@ -28,129 +49,91 @@ def total_seconds(delta):
              * 10 ** 6) / 10 ** 6)
 
 
-class TotalMetric(object):
+class Metric(object):
 
-    Dimensions = {
-        'account': 'LinkedAccountId',
-        'service': 'ProductName'}
+    Dimensions = ''
 
     def __init__(self):
-        self.name = 'Total Usage'
-        self._totals = {
-            'usage': decimal.Decimal('0.0'),
-            'onetime': decimal.Decimal('0.0'),
-        }
-        for dim in self.Dimensions:
-            self._totals[dim] = {}
+        self.data = {}
 
     def __repr__(self):
-        return self.name
+        return self.__class__.__name__
 
     def __add__(self, other):
-        for dimension in self._totals:
-            if isinstance(self._totals[dimension], dict):
-                all_subdims = set(self._totals[dimension].keys())
-                all_subdims.update(other._totals[dimension].keys())
-                for subdim in all_subdims:
-                    if subdim not in self._totals[dimension]:
-                        self._totals[dimension][subdim] = decimal.Decimal('0.0')
-                    self._totals[dimension][subdim] += other._totals[dimension].get(subdim, decimal.Decimal('0.0'))
-            else:
-                self._totals[dimension] += other._totals.get(dimension, decimal.Decimal('0.0'))
+        all_subdims = set(self.data.keys())
+        all_subdims.update(other.data.keys())
+        for subdim in all_subdims:
+            if subdim not in self.data:
+                self.data[subdim] = decimal.Decimal('0.0')
+            other_value = other.data.get(subdim, decimal.Decimal('0.0'))
+            self.data[subdim] += other_value
 
-    @property
-    def totals(self):
-        return self._totals
+    def keyfn(self, data):
+        pass
 
     def add(self, data):
-        for dim_name in self.Dimensions:
-            key = self.Dimensions[dim_name]
-            value = data[key]
-            if value not in self._totals[dim_name]:
-                self._totals[dim_name][value] = decimal.Decimal('0.0')
-            self._totals[dim_name][value] += data['UnBlendedCost']
-        if data['ReservedInstance'] == 'Y' and not data['SubscriptionId']:
-            self._totals['onetime'] += data['UnBlendedCost']
-        else:
-            self._totals['usage'] += data['UnBlendedCost']
+        dimension_key = self.keyfn(data)
+        if dimension_key is not None:
+            if dimension_key not in self.data:
+                self.data[dimension_key] = decimal.Decimal('0.0')
+            self.data[dimension_key] += data['UnBlendedCost']
 
-    def dimensions(self):
-        return self._totals.keys()
-
-    def dump(self):
-        for dimension in self._totals:
-            print('Dimension: %s' % dimension)
-            value = self._totals[dimension]
-            if isinstance(value, dict):
-                for key in value:
-                    print('\t%s = %s' % (key, value[key]))
+    def query(self, **kwargs):
+        dimensions = self.Dimensions.split('|')
+        regexs = []
+        for dimension in dimensions:
+            if dimension in kwargs:
+                regexs.append(kwargs[dimension])
             else:
-                print('\t%s = %s' % (dimension, value))
+                regexs.append('.*')
+        regex = '\|'.join(regexs)
+        regex = re.compile(regex)
+        filtered_keys = [k for k in self.data.keys() if regex.match(k)]
+        return {k: self.data[k] for k in filtered_keys}
 
 
-#
-# The following metrics need to be converted to the newer style metric
-# as shown above.
-#
-class InstanceCostMetric(object):
+class TotalUsage(Metric):
 
-    def __init__(self):
-        self.name = 'InstanceCost'
-        self._instance_types = {}
-        self._accounts = {}
-        self._regions = {}
-        self._total = decimal.Decimal('0.0')
+    Dimensions = 'account|service'
 
-    def add(self, data):
-        if data['UsageType'].startswith('BoxUsage'):
-            if ':' in data['UsageType']:
-                _, instance_type = data['UsageType'].split(':')
+    def keyfn(self, data):
+        product_name = data['ProductName']
+        product_name = ServiceMap.get(product_name, product_name)
+        key = '%s|%s' % (data['LinkedAccountId'], product_name)
+        return key
+
+
+class InstanceCost(Metric):
+
+    Dimensions = 'account|service|instance_type'
+
+    def keyfn(self, data):
+        key = None
+        usage_type = data['UsageType']
+        if usage_type.startswith('BoxUsage'):
+            product_name = data['ProductName']
+            if ':' in usage_type:
+                _, instance_type = usage_type.split(':')
             else:
-                instance_type = 'none'
-            if instance_type not in self._instance_types:
-                self._instance_types[instance_type] = decimal.Decimal('0.0')
-            self._instance_types[instance_type] += data['UnBlendedCost']
-            account = data['LinkedAccountId']
-            if account not in self._accounts:
-                self._accounts[account] = decimal.Decimal('0.0')
-            self._accounts[account] += data['UnBlendedCost']
-            self._total += data['UnBlendedCost']
-
-    def dimensions(self):
-        for key in self._accounts:
-            value = self._accounts[key]
-            print('Account:%s = %s' % (key, value))
-        for key in self._instance_types:
-            value = self._instance_types[key]
-            print('InstanceType:%s = %s' % (key, value))
+                instance_type = 'm1.small'
+            key = '%s|%s|%s' % (
+                data['LinkedAccountId'],
+                ServiceMap.get(product_name, product_name),
+                instance_type)
+        return key
 
 
-class DataTransferMetric(object):
+class DataTransfer(Metric):
 
-    def __init__(self):
-        self.name = 'DataTranser'
-        self._transfer_types = {}
-        self._accounts = {}
-        self._total = decimal.Decimal('0.0')
+    Dimensions = 'account|service|transfer_type'
 
-    def add(self, data):
+    def keyfn(self, data):
+        key = None
         if data['UsageType'].startswith('DataTransfer'):
+            product_name = data['ProductName']
             _, transfer_type, _ = data['UsageType'].split('-')
-            if not transfer_type:
-                transfer_type = 'none'
-            if transfer_type not in self._transfer_types:
-                self._transfer_types[transfer_type] = decimal.Decimal('0.0')
-            self._transfer_types[transfer_type] += data['UnBlendedCost']
-            account = data['LinkedAccountId']
-            if account not in self._accounts:
-                self._accounts[account] = decimal.Decimal('0.0')
-            self._accounts[account] += data['UnBlendedCost']
-            self._total += data['UnBlendedCost']
-
-    def dimensions(self):
-        for key in self._accounts:
-            value = self._accounts[key]
-            print('Account:%s = %s' % (key, value))
-        for key in self._transfer_types:
-            value = self._transfer_types[key]
-            print('TransferType:%s = %s' % (key, value))
+            key = '%s|%s|%s' % (
+                data['LinkedAccountId'],
+                ServiceMap.get(product_name, product_name),
+                transfer_type)
+        return key
