@@ -16,7 +16,7 @@ import pytz
 
 from botocore.utils import parse_to_aware_datetime
 
-from skinflint.metric import TotalUsage
+from skinflint.metric import TotalUsage, InstanceCost, DataTransfer
 
 
 class Slice(object):
@@ -32,11 +32,15 @@ class Slice(object):
             self.end = end
         self._retain_lineitems = retain_lineitems
         self._lineitems = []
-        self.metrics = [TotalUsage()]
+        self.metrics = [TotalUsage(), InstanceCost(), DataTransfer()]
 
     def __add__(self, other):
         for metric, other_metric in zip(self.metrics, other.metrics):
-            metric += other_metric
+            metric + other_metric
+
+    def merge(self, other):
+        for metric, other_metric in zip(self.metrics, other.metrics):
+            metric.merge(other_metric)
 
     def add_lineitem(self, lineitem):
         if self._retain_lineitems:
@@ -51,8 +55,6 @@ class Slice(object):
 
 class SuperSlice(object):
 
-    SkipTypes = ['InvoiceTotal', 'StatementTotal', 'Rounding']
-
     def __init__(self):
         self.slices = {}
         self.non_lineitems = []
@@ -66,13 +68,10 @@ class SuperSlice(object):
             if slice_key not in self.slices:
                 self.slices[slice_key] = slice
             else:
-                current_slice = self.slices[slice_key]
-                for n, metric in enumerate(slice.metrics):
-                    for dimension in metric.data:
-                        current_slice.metrics[n].data[dimension].update(
-                            metric.data[dimension])
+                self.slices[slice_key] + slice
 
     def load(self, billreader):
+        slice = None
         start = None
         end = None
         done = False
@@ -85,11 +84,14 @@ class SuperSlice(object):
             usage_start = lineitem['UsageStartDate']
             usage_end = lineitem['UsageEndDate']
             if usage_start != start or usage_end != end:
+                if slice:
+                    self.add(slice)
                 start = usage_start
                 end = usage_end
                 slice = Slice(start, end)
-                self.add(slice)
             slice.add_lineitem(lineitem)
+        if slice:
+            self.add(slice)
 
     def metrics(self):
         metrics = []
