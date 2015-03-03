@@ -23,13 +23,15 @@ class DetailedBillingReader(object):
         self._reader = csv.reader(self._fp)
         self.headers = next(self._reader)
 
-    def next(self):
+    def __next__(self):
         line = next(self._reader)
         data = {}
         for i in range(0, len(self.headers)):
             data[self.headers[i]] = line[i]
         data['UnBlendedCost'] = decimal.Decimal(data['UnBlendedCost'])
         return data
+
+    next = __next__
 
     def __iter__(self):
         return self

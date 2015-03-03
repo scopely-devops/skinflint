@@ -1,6 +1,10 @@
 skinflint
 =========
 
+[![Code Health](https://landscape.io/github/scopely-devops/skinflint/develop/landscape.svg?style=flat)](https://landscape.io/github/scopely-devops/skinflint/develop)
+
+[![Build Status](https://travis-ci.org/scopely-devops/skinflint.svg?branch=develop)](https://travis-ci.org/scopely-devops/skinflint)
+
 Tools to slice and aggregate AWS detailed billing reports.
 
 Basic Usage
