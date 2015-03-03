@@ -60,18 +60,18 @@ class SuperSlice(object):
         self.non_lineitems = []
         self.onetime_charges = []
 
-    def add(self, slice):
-        if not slice.start and not slice.end:
-            self.non_lineitems.append(slice)
+    def add(self, slice_):
+        if not slice_.start and not slice_.end:
+            self.non_lineitems.append(slice_)
         else:
-            slice_key = '%s-%s' % (slice.start, slice.end)
+            slice_key = '%s-%s' % (slice_.start, slice_.end)
             if slice_key not in self.slices:
-                self.slices[slice_key] = slice
+                self.slices[slice_key] = slice_
             else:
-                self.slices[slice_key] + slice
+                self.slices[slice_key] + slice_
 
     def load(self, billreader):
-        slice = None
+        slice_ = None
         start = None
         end = None
         done = False
@@ -84,14 +84,14 @@ class SuperSlice(object):
             usage_start = lineitem['UsageStartDate']
             usage_end = lineitem['UsageEndDate']
             if usage_start != start or usage_end != end:
-                if slice:
-                    self.add(slice)
+                if slice_:
+                    self.add(slice_)
                 start = usage_start
                 end = usage_end
-                slice = Slice(start, end)
-            slice.add_lineitem(lineitem)
-        if slice:
-            self.add(slice)
+                slice_ = Slice(start, end)
+            slice_.add_lineitem(lineitem)
+        if slice_:
+            self.add(slice_)
 
     def metrics(self):
         metrics = []
@@ -102,9 +102,9 @@ class SuperSlice(object):
     def aggregate(self, start, end):
         aggregate_slice = Slice(start, end)
         for slice_key in self.slices:
-            slice = self.slices[slice_key]
-            if slice.start >= start and slice.end <= end:
-                aggregate_slice + slice
+            slice_ = self.slices[slice_key]
+            if slice_.start >= start and slice_.end <= end:
+                aggregate_slice + slice_
         return aggregate_slice
 
     def _slice_a_day(self, days_ago):
