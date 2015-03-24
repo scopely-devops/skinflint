@@ -18,26 +18,27 @@ import re
 Epoch = datetime.datetime(1970, 1, 1)
 
 ServiceMap = {
-    'AWS Data Pipeline': 'datapipeline',
-    'Amazon DynamoDB': 'dynamodb',
-    'Amazon ElastiCache': 'elasticache',
-    'Amazon Elastic Compute Cloud': 'ec2',
-    'Amazon Elastic MapReduce': 'emr',
-    'Amazon Kinesis': 'kinesis',
-    'Amazon RDS Service': 'rds',
-    'Amazon Redshift': 'redshift',
-    'Amazon Route 53': 'route53',
-    'Amazon Simple Notification Service': 'sns',
-    'Amazon Simple Queue Service': 'sqs',
-    'Amazon Simple Storage Service': 's3',
-    'Amazon SimpleDB': 'simpledb',
-    'AWS Key Management Service': 'kms',
-    'AmazonCloudWatch': 'cloudwatch',
-    'Amazon CloudFront': 'cloudfront',
-    'Amazon Simple Email Service': 'ses',
-    'AWS Lambda': 'lambda',
-    'Amazon Virtual Private Cloud': 'vpc',
-    'Amazon CloudSearch': 'cloudsearch'
+    'AWS Data Pipeline': 'DataPipeline',
+    'Amazon DynamoDB': 'DynamoDB',
+    'Amazon ElastiCache': 'ElastiCache',
+    'Amazon Elastic Compute Cloud': 'EC2',
+    'Amazon Elastic MapReduce': 'EMR',
+    'Amazon Kinesis': 'Kinesis',
+    'Amazon RDS Service': 'RDS',
+    'Amazon Redshift': 'Redshift',
+    'Amazon Route 53': 'Route53',
+    'Amazon Simple Notification Service': 'SNS',
+    'Amazon Simple Queue Service': 'SQS',
+    'Amazon Simple Storage Service': 'S3',
+    'Amazon SimpleDB': 'SimpleDB',
+    'AWS Key Management Service': 'KMS',
+    'AmazonCloudWatch': 'CloudWatch',
+    'Amazon CloudFront': 'CloudFront',
+    'Amazon Simple Email Service': 'SES',
+    'AWS Lambda': 'Lambda',
+    'Amazon Virtual Private Cloud': 'VPC',
+    'Amazon CloudSearch': 'CloudSearch',
+    'AWS Config': 'Config'
 }
 
 
