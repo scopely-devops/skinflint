@@ -4,9 +4,10 @@ from setuptools import setup, find_packages
 
 import os
 
-requires = ['botocore==0.94.0',
+requires = ['boto>=2.38.0',
             'python-dateutil>=2.1,<3.0.0',
             'PyYAML>=3.11',
+            'XlsxWriter==0.6.7',
             'pytz==2014.10']
 
 setup(

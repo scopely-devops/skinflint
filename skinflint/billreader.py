@@ -15,23 +15,60 @@ import csv
 import decimal
 
 
-class DetailedBillingReader(object):
+class ReportReader(object):
+
+    KeyName = ''
 
     def __init__(self, filepath):
         self.filepath = filepath
         self._fp = open(filepath)
         self._reader = csv.reader(self._fp)
-        self.headers = next(self._reader)
+        self.headers = []
+        while len(self.headers) <= 1:
+            self.headers = next(self._reader)
+
+    def _computed_data(self, data):
+        pass
 
     def __next__(self):
         line = next(self._reader)
         data = {}
         for i in range(0, len(self.headers)):
             data[self.headers[i]] = line[i]
-        data['UnBlendedCost'] = decimal.Decimal(data['UnBlendedCost'])
+        self._computed_data(data)
         return data
 
     next = __next__
 
     def __iter__(self):
         return self
+
+
+class DetailedBillReportReader(ReportReader):
+
+    KeyName = ('{id}-aws-billing-detailed-line-items-with-resources-'
+               'and-tags-{year}-{month:02d}.csv.zip')
+
+    def _computed_data(self, data):
+        data['UnBlendedCost'] = decimal.Decimal(data['UnBlendedCost'])
+        data['BlendedCost'] = decimal.Decimal(data['BlendedCost'])
+
+
+class MonthlyReportReader(ReportReader):
+
+    KeyName = '{id}-aws-billing-csv-{year}-{month:02d}.csv'
+
+    def _computed_data(self, data):
+        if data['TotalCost'] == '':
+            data['TotalCost'] = '0'
+        data['TotalCost'] = decimal.Decimal(data['TotalCost'])
+
+
+class MonthlyCostAllocationReportReader(ReportReader):
+
+    KeyName = '{id}-aws-cost-allocation-{year}-{month:02d}.csv'
+
+    def _computed_data(self, data):
+        if 'TotalCost' not in data or data['TotalCost'] == '':
+            data['TotalCost'] = '0'
+        data['TotalCost'] = decimal.Decimal(data['TotalCost'])

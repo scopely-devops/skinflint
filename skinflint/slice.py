@@ -12,11 +12,43 @@
 # language governing permissions and limitations under the License.
 
 import datetime
+import calendar
+
+from dateutil.tz import tzlocal, tzutc
+import dateutil.parser
 import pytz
 
-from botocore.utils import parse_to_aware_datetime
-
 from skinflint.metric import TotalUsage, InstanceCost, DataTransfer
+
+
+# The following utility functions were copied directly from botocore.utils
+
+
+def parse_timestamp(value):
+    if isinstance(value, (int, float)):
+        # Possibly an epoch time.
+        return datetime.datetime.fromtimestamp(value, tzlocal())
+    else:
+        try:
+            return datetime.datetime.fromtimestamp(float(value), tzlocal())
+        except (TypeError, ValueError):
+            pass
+    try:
+        return dateutil.parser.parse(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError('Invalid timestamp "%s": %s' % (value, e))
+
+
+def parse_to_aware_datetime(value):
+    if isinstance(value, datetime.datetime):
+        datetime_obj = value
+    else:
+        datetime_obj = parse_timestamp(value)
+    if datetime_obj.tzinfo is None:
+        datetime_obj = datetime_obj.replace(tzinfo=tzutc())
+    else:
+        datetime_obj = datetime_obj.astimezone(tzutc())
+    return datetime_obj
 
 
 class Slice(object):
@@ -38,10 +70,6 @@ class Slice(object):
         for metric, other_metric in zip(self.metrics, other.metrics):
             metric + other_metric
 
-    def merge(self, other):
-        for metric, other_metric in zip(self.metrics, other.metrics):
-            metric.merge(other_metric)
-
     def add_lineitem(self, lineitem):
         if self._retain_lineitems:
             self._lineitems.append(lineitem)
@@ -59,19 +87,29 @@ class SuperSlice(object):
         self.slices = {}
         self.non_lineitems = []
         self.onetime_charges = []
+        self.start = None
+        self.end = None
 
-    def add(self, slice_):
-        if not slice_.start and not slice_.end:
-            self.non_lineitems.append(slice_)
+    def add(self, new_slice):
+        if not new_slice.start and not new_slice.end:
+            self.non_lineitems.append(new_slice)
         else:
-            slice_key = '%s-%s' % (slice_.start, slice_.end)
+            if self.start is None:
+                self.start = new_slice.start
+            elif self.start > new_slice.start:
+                self.start = new_slice.start
+            if self.end is None:
+                self.end = new_slice.end
+            elif self.end < new_slice.end:
+                self.end = new_slice.end
+            slice_key = '%s-%s' % (new_slice.start, new_slice.end)
             if slice_key not in self.slices:
-                self.slices[slice_key] = slice_
+                self.slices[slice_key] = new_slice
             else:
-                self.slices[slice_key] + slice_
+                self.slices[slice_key] + new_slice
 
     def load(self, billreader):
-        slice_ = None
+        new_slice = None
         start = None
         end = None
         done = False
@@ -83,15 +121,16 @@ class SuperSlice(object):
                 continue
             usage_start = lineitem['UsageStartDate']
             usage_end = lineitem['UsageEndDate']
-            if usage_start != start or usage_end != end:
-                if slice_:
-                    self.add(slice_)
-                start = usage_start
-                end = usage_end
-                slice_ = Slice(start, end)
-            slice_.add_lineitem(lineitem)
-        if slice_:
-            self.add(slice_)
+            if lineitem['RateId'] != '0':
+                if usage_start != start or usage_end != end:
+                    if new_slice:
+                        self.add(new_slice)
+                    start = usage_start
+                    end = usage_end
+                    new_slice = Slice(start, end)
+            new_slice.add_lineitem(lineitem)
+        if new_slice:
+            self.add(new_slice)
 
     def metrics(self):
         metrics = []
@@ -102,17 +141,20 @@ class SuperSlice(object):
     def aggregate(self, start, end):
         aggregate_slice = Slice(start, end)
         for slice_key in self.slices:
-            slice_ = self.slices[slice_key]
-            if slice_.start >= start and slice_.end <= end:
-                aggregate_slice + slice_
+            new_slice = self.slices[slice_key]
+            if new_slice.start >= start and new_slice.end <= end:
+                aggregate_slice + new_slice
         return aggregate_slice
+
+    def all(self):
+        return self.aggregate(self.start, self.end)
 
     def _slice_a_day(self, days_ago):
         now = pytz.utc.localize(datetime.datetime.utcnow())
         now = now - days_ago
         start = datetime.datetime(now.year, now.month, now.day)
         start = pytz.utc.localize(start)
-        end = start + datetime.timedelta(hours=23, minutes=59)
+        end = start + datetime.timedelta(hours=23, minutes=59, seconds=59)
         return self.aggregate(start, end)
 
     def latest(self):
@@ -120,16 +162,43 @@ class SuperSlice(object):
         return self._slice_a_day(one_day)
 
     def one_day_ago(self):
-        two_days = datetime.timedelta(hours=24*2)
+        two_days = datetime.timedelta(hours=24 * 2)
         return self._slice_a_day(two_days)
 
     def one_week_ago(self):
-        one_week = datetime.timedelta(hours=24*8)
+        one_week = datetime.timedelta(hours=24 * 8)
         return self._slice_a_day(one_week)
 
     def one_month_ago(self):
-        one_month = datetime.timedelta(hours=24*29)
+        one_month = datetime.timedelta(hours=24 * 29)
         return self._slice_a_day(one_month)
+
+    def month(self, year, month):
+        month_start = pytz.utc.localize(
+            datetime.datetime(year, month, 1))
+        month_end = pytz.utc.localize(
+            datetime.datetime(year, month + 1, 1, 0, 0, 0))
+        return self.aggregate(month_start, month_end)
+
+    def this_month(self):
+        now = pytz.utc.localize(datetime.datetime.utcnow())
+        return self.month(now.year, now.month)
+
+    def last_month(self):
+        now = pytz.utc.localize(datetime.datetime.utcnow())
+        then = now - datetime.timedelta(days=now.day + 1)
+        return self.month(then.year, then.month)
+
+    def last_month_to_date(self):
+        now = pytz.utc.localize(datetime.datetime.utcnow())
+        then = now - datetime.timedelta(days=now.day + 1)
+        _, ndays = calendar.monthrange(then.year, then.month)
+        month_start = pytz.utc.localize(
+            datetime.datetime(then.year, then.month, 1))
+        month_end = pytz.utc.localize(
+            datetime.datetime(
+                then.year, then.month, min(now.day, ndays), now.hour, now.minute))
+        return self.aggregate(month_start, month_end)
 
 
 def slicer(billreader):

@@ -77,7 +77,7 @@ class Metric(object):
         if dimension_key is not None:
             if dimension_key not in self.data:
                 self.data[dimension_key] = decimal.Decimal('0.0')
-            self.data[dimension_key] += data['UnBlendedCost']
+            self.data[dimension_key] += data['BlendedCost']
 
     def query(self, **kwargs):
         dimensions = self.Dimensions.split('|')
@@ -92,15 +92,29 @@ class Metric(object):
         filtered_keys = [k for k in self.data.keys() if regex.match(k)]
         return {k: self.data[k] for k in filtered_keys}
 
+    def dimensions(self):
+        dimension_names = self.Dimensions.split('|')
+        dimensions = {k: [] for k in dimension_names}
+        for k in self.data:
+            dimension_values = k.split('|')
+            for i in range(0, len(dimension_values)):
+                if dimension_values[i] not in dimensions[dimension_names[i]]:
+                    dimensions[dimension_names[i]].append(dimension_values[i])
+        return dimensions
+
 
 class TotalUsage(Metric):
 
-    Dimensions = 'account|service'
+    Dimensions = 'account|service|type'
 
     def keyfn(self, data):
+        if not data['UsageType']:
+            charge_type = 'one-time'
+        else:
+            charge_type = 'usage'
         product_name = data['ProductName']
         product_name = ServiceMap.get(product_name, product_name)
-        key = '%s|%s' % (data['LinkedAccountId'], product_name)
+        key = '%s|%s|%s' % (data['LinkedAccountId'], product_name, charge_type)
         return key
 
 

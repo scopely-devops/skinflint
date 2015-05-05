@@ -20,15 +20,12 @@ import pytz
 import dateutil.tz
 import boto
 
-from skinflint.billreader import DetailedBillingReader
+from skinflint.billreader import *
 
 LOG = logging.getLogger(__name__)
 
 
 class FileManager(object):
-
-    KeyName = ('{id}-aws-billing-detailed-line-items-with-resources-'
-               'and-tags-{year}-{month:02d}.csv.zip')
 
     def __init__(self, config):
         self.config = config
@@ -51,19 +48,21 @@ class FileManager(object):
         LOG.debug('downloading %s', key.name)
         key_path = os.path.join(self.cache_dir, key.name)
         key.get_contents_to_filename(key_path)
-        zf = zipfile.ZipFile(key_path)
-        namelist = zf.namelist()
-        dbf = namelist[0]
-        LOG.debug('unzipping downloaded file')
-        zf.extract(dbf, self.cache_dir)
-        zf.close()
-        LOG.debug('deleting zip file')
-        os.unlink(key_path)
+        if key.name.endswith('.zip'):
+            zf = zipfile.ZipFile(key_path)
+            namelist = zf.namelist()
+            dbf = namelist[0]
+            LOG.debug('unzipping downloaded file')
+            zf.extract(dbf, self.cache_dir)
+            zf.close()
+            LOG.debug('deleting zip file')
+            os.unlink(key_path)
 
     def _check_key(self, key, file_name):
         if not os.path.isfile(file_name):
             LOG.debug('%s not in cache, downloading now', file_name)
             self._download_and_unzip(key, file_name)
+            file_mod_time = self._get_file_modified_time(file_name)
         else:
             file_mod_time = self._get_file_modified_time(file_name)
             LOG.debug('file_mod_time: %s', file_mod_time)
@@ -73,17 +72,32 @@ class FileManager(object):
                 LOG.debug('cached copy of %s out of date', file_name)
                 self._download_and_unzip(key, file_name)
 
-    def get_bill_reader(self, account_name, year, month):
-        account_cfg = self.config['accounts'][account_name]
+    def _get_bill_reader(self, billreader_cls, account_id, year, month):
+        account_cfg = self.config['accounts'][account_id]
         s3 = boto.connect_s3(profile_name=account_cfg['profile'])
         bucket = s3.lookup(account_cfg['bucket'])
-        key_name = self.KeyName.format(
-            id=account_cfg['id'], year=year, month=month)
+        key_name = billreader_cls.KeyName.format(
+            id=account_id, year=year, month=month)
         key = bucket.lookup(key_name)
         if key is None:
             msg = 'Bucket (%s) does not contain Key (%s)' % (bucket, key_name)
             raise ValueError(msg)
-        file_name = key_name[0:-4]
+        if key_name.endswith('.zip'):
+            file_name = key_name[0:-4]
+        else:
+            file_name = key_name
         file_name = os.path.join(self.cache_dir, file_name)
         self._check_key(key, file_name)
-        return DetailedBillingReader(file_name)
+        return billreader_cls(file_name)
+
+    def get_detailed_billing_report_reader(self, account_id, year, month):
+        return self._get_bill_reader(
+            DetailedBillReportReader, account_id, year, month)
+
+    def get_monthly_report_reader(self, account_id, year, month):
+        return self._get_bill_reader(
+            MonthlyReportReader, account_id, year, month)
+
+    def get_monthly_allocation_report_reader(self, account_id, year, month):
+        return self._get_bill_reader(
+            MonthlyCostAllocationReportReader, account_id, year, month)
