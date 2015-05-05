@@ -34,16 +34,16 @@ class Page(object):
     def create_headers(self, headers, row, col):
         for header in headers:
             if 'format' in header:
-                format = self._report.get_format(header.get('format', None))
+                fmt = self._report.get_format(header.get('format', None))
             else:
-                format = None
+                fmt = None
             merge_range = header.get('range', None)
             if merge_range:
                 self.worksheet.merge_range(
                     row + merge_range[0][0], col + merge_range[0][1],
                     row + merge_range[1][0], col + merge_range[1][1],
                     header.get('label', ''),
-                    format)
+                    fmt)
                 col += merge_range[1][1] + 1
             else:
                 width = header.get('width', None)
@@ -54,7 +54,7 @@ class Page(object):
                             col, col, width, None, {'hidden': hidden})
                     else:
                         self.worksheet.set_column(col, col, width)
-                self.worksheet.write(row, col, header['label'], format)
+                self.worksheet.write(row, col, header['label'], fmt)
                 col += 1
 
 
@@ -88,9 +88,9 @@ class Report(object):
         return self._pages[name]
 
     def add_formats(self, formats):
-        for format in formats:
-            self._formats[format] = self._workbook.add_format(
-                formats[format])
+        for fmt in formats:
+            self._formats[fmt] = self._workbook.add_format(
+                formats[fmt])
 
     def _create_formula(self, r1, c1, r2, c2, operation):
         c1 = xl_rowcol_to_cell(r1, c1)

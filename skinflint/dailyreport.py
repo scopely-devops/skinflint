@@ -60,16 +60,16 @@ class DailyReport(Report):
         page = self.get_page(page_name)
         for header in headers:
             if 'format' in header:
-                format = self.get_format(header.get('format', None))
+                fmt = self.get_format(header.get('format', None))
             else:
-                format = None
+                fmt = None
             merge_range = header.get('range', None)
             if merge_range:
                 page.worksheet.merge_range(
                     row + merge_range[0][0], col + merge_range[0][1],
                     row + merge_range[1][0], col + merge_range[1][1],
                     header.get('label', ''),
-                    format)
+                    fmt)
                 col += merge_range[1][1] + 1
             else:
                 width = header.get('width', None)
@@ -80,7 +80,7 @@ class DailyReport(Report):
                             col, col, width, None, {'hidden': hidden})
                     else:
                         page.worksheet.set_column(col, col, width)
-                page.write(row, col, header['label'], format)
+                page.write(row, col, header['label'], fmt)
                 col += 1
 
     def _create_formula(self, r1, c1, r2, c2, operation):
@@ -194,7 +194,8 @@ class DailyReport(Report):
         header_format = self.get_format('header')
         this_month = sum([v for v in account.usage['this_month'].values()])
         last_month = sum([v for v in account.usage['last_month'].values()])
-        last_month_to_date = sum([v for v in account.usage['last_month_to_date'].values()])
+        last_month_to_date = sum(
+            [v for v in account.usage['last_month_to_date'].values()])
         now = pytz.utc.localize(datetime.datetime.utcnow())
         beginning = pytz.utc.localize(
             datetime.datetime(now.year, now.month, 1))
@@ -280,23 +281,10 @@ class AccountCollection(object):
                     time_frame, service, charge_type, metric.data[data_key])
 
 
-def create_report(config_path, accounts, year, month):
-    fp = open(config_path)
-    config = yaml.load(fp)
-    fp.close()
-    fm = FileManager(config)
-    ss = SuperSlice()
-    for account in accounts:
-        dbr = fm.get_detailed_billing_report_reader(account, year, month)
-        ss.load(dbr)
-        dbr = fm.get_detailed_billing_report_reader(account, year, month - 1)
-        ss.load(dbr)
-    account_collection = AccountCollection(ss, config['accounts'])
-    report = DailyReport(config)
-    # Write summary worksheet
-    report.create_page('Summary')
-    report.create_headers('Summary', Header1, 1, 2)
-    report.create_headers('Summary', Header2, 2, 2)
+def create_summary_page(title, report, account_collection):
+    report.create_page(title)
+    report.create_headers(title, Header1, 1, 2)
+    report.create_headers(title, Header2, 2, 2)
     account_totals = {}
     for label in ['latest', 'one_day_ago', 'one_week_ago', 'one_month_ago']:
         account_totals[label] = {}
@@ -321,55 +309,92 @@ def create_report(config_path, accounts, year, month):
         data.append(datum)
         datum = account_totals['one_month_ago'].get(account_id, 0)
         data.append(datum)
-        if account_id in config['accounts']:
-            account_name = config['accounts'][account_id]['name']
+        if account_id in report.config['accounts']:
+            account_name = report.config['accounts'][account_id]['name']
         else:
             account_name = account_id
         report.write_service_data(
-            'Summary', row, col, account_name, data)
+            title, row, col, account_name, data)
         row += 1
+
+
+def create_account_page(report, account_collection, account_id, all_accounts):
+    account = account_collection.totals[account_id]
+    account_latest = account.sort_label('latest')
+    total_cost = sum([c[1] for c in account_latest])
+    if total_cost < 30 or account.id not in all_accounts:
+        return
+    if 'one_day_ago' not in account.usage:
+        return
+    if 'one_week_ago' not in account.usage:
+        return
+    if 'one_month_ago' not in account.usage:
+        return
+    report.create_page(account.name)
+    report.create_headers(account.name, Header1, 1, 2)
+    report.create_headers(account.name, Header2, 2, 2)
+    row = 3
+    col = 2
+    i = 0
+    for service, amount in account_latest:
+        if amount < 15:
+            break
+        data = [amount]
+        datum = account.usage['one_day_ago'].get(service, 0)
+        data.append(datum)
+        datum = account.usage['one_week_ago'].get(service, 0)
+        data.append(datum)
+        datum = account.usage['one_month_ago'].get(service, 0)
+        data.append(datum)
+        report.write_service_data(
+            account.name, row, col, service, data)
+        row += 1
+        i += 1
+    other_data = [0, 0, 0, 0]
+    for service, amount in account_latest[i:]:
+        other_data[0] += amount
+        other_data[1] += account.usage['one_day_ago'].get(service, 0)
+        other_data[2] += account.usage['one_week_ago'].get(service, 0)
+        other_data[3] += account.usage['one_month_ago'].get(service, 0)
+    report.write_service_data(
+        account.name, row, col, 'Other', other_data)
+    report.add_chart(account.name, 2, 2, i)
+    report.write_monthly_totals(account, 1, 14)
+
+
+def create_report(config_path, year=None, month=None, day=None):
+    now = pytz.utc.localize(datetime.datetime.utcnow())
+    if year and month and day:
+        now = pytz.utc.localize(datetime.datetime(year=year,
+                                                  month=month,
+                                                  day=day,
+                                                  hour=now.hour,
+                                                  minute=now.minute))
+    fp = open(config_path)
+    config = yaml.load(fp)
+    fp.close()
+    fm = FileManager(config)
+    ss = SuperSlice(now)
+    for account_id in config['accounts']:
+        account_data = config['accounts'][account_id]
+        if 'bucket' in account_data:
+            dbr = fm.get_detailed_billing_report_reader(
+                account_id, now.year, now.month)
+            ss.load(dbr)
+            dbr = fm.get_detailed_billing_report_reader(
+                account_id, now.year, now.month - 1)
+            ss.load(dbr)
+    account_collection = AccountCollection(ss, config['accounts'])
+    report = DailyReport(config)
+
+    # Write summary worksheet
+    month_name = calendar.month_abbr[now.month]
+    title = 'Summary-{} {} {}'.format(month_name, now.day, now.year)
+    create_summary_page(title, report, account_collection)
+
     # Now write worksheets for each account
     all_accounts = config['accounts'].keys() + ['AllAccounts']
     for account_id in account_collection.totals:
-        account = account_collection.totals[account_id]
-        account_latest = account.sort_label('latest')
-        total_cost = sum([c[1] for c in account_latest])
-        if total_cost < 30 or account.id not in all_accounts:
-            continue
-        if 'one_day_ago' not in account.usage:
-            continue
-        if 'one_week_ago' not in account.usage:
-            continue
-        if 'one_month_ago' not in account.usage:
-            continue
-        report.create_page(account.name)
-        report.create_headers(account.name, Header1, 1, 2)
-        report.create_headers(account.name, Header2, 2, 2)
-        row = 3
-        col = 2
-        i = 0
-        for service, amount in account_latest:
-            if amount < 15:
-                break
-            data = [amount]
-            datum = account.usage['one_day_ago'].get(service, 0)
-            data.append(datum)
-            datum = account.usage['one_week_ago'].get(service, 0)
-            data.append(datum)
-            datum = account.usage['one_month_ago'].get(service, 0)
-            data.append(datum)
-            report.write_service_data(
-                account.name, row, col, service, data)
-            row += 1
-            i += 1
-        other_data = [0, 0, 0, 0]
-        for service, amount in account_latest[i:]:
-            other_data[0] += amount
-            other_data[1] += account.usage['one_day_ago'].get(service, 0)
-            other_data[2] += account.usage['one_week_ago'].get(service, 0)
-            other_data[3] += account.usage['one_month_ago'].get(service, 0)
-        report.write_service_data(
-            account.name, row, col, 'Other', other_data)
-        report.add_chart(account.name, 2, 2, i)
-        report.write_monthly_totals(account, 1, 14)
+        create_account_page(
+            report, account_collection, account_id, all_accounts)
     report.close()

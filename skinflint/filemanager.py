@@ -44,7 +44,7 @@ class FileManager(object):
         ts = boto.utils.parse_ts(key.last_modified)
         return pytz.utc.localize(ts)
 
-    def _download_and_unzip(self, key, file_name):
+    def _download_and_unzip(self, key):
         LOG.debug('downloading %s', key.name)
         key_path = os.path.join(self.cache_dir, key.name)
         key.get_contents_to_filename(key_path)
@@ -70,7 +70,7 @@ class FileManager(object):
             LOG.debug('key_mod_time: %s', key_mod_time)
             if key_mod_time > file_mod_time:
                 LOG.debug('cached copy of %s out of date', file_name)
-                self._download_and_unzip(key, file_name)
+                self._download_and_unzip(key)
 
     def _get_bill_reader(self, billreader_cls, account_id, year, month):
         account_cfg = self.config['accounts'][account_id]

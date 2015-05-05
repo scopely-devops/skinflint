@@ -83,12 +83,15 @@ class Slice(object):
 
 class SuperSlice(object):
 
-    def __init__(self):
+    def __init__(self, now=None):
         self.slices = {}
         self.non_lineitems = []
         self.onetime_charges = []
         self.start = None
         self.end = None
+        self.now = now
+        if self.now is None:
+            self.now = pytz.utc.localize(datetime.datetime.utcnow())
 
     def add(self, new_slice):
         if not new_slice.start and not new_slice.end:
@@ -150,8 +153,7 @@ class SuperSlice(object):
         return self.aggregate(self.start, self.end)
 
     def _slice_a_day(self, days_ago):
-        now = pytz.utc.localize(datetime.datetime.utcnow())
-        now = now - days_ago
+        now = self.now - days_ago
         start = datetime.datetime(now.year, now.month, now.day)
         start = pytz.utc.localize(start)
         end = start + datetime.timedelta(hours=23, minutes=59, seconds=59)
@@ -181,23 +183,21 @@ class SuperSlice(object):
         return self.aggregate(month_start, month_end)
 
     def this_month(self):
-        now = pytz.utc.localize(datetime.datetime.utcnow())
-        return self.month(now.year, now.month)
+        return self.month(self.now.year, self.now.month)
 
     def last_month(self):
-        now = pytz.utc.localize(datetime.datetime.utcnow())
-        then = now - datetime.timedelta(days=now.day + 1)
+        then = self.now - datetime.timedelta(days=self.now.day + 1)
         return self.month(then.year, then.month)
 
     def last_month_to_date(self):
-        now = pytz.utc.localize(datetime.datetime.utcnow())
-        then = now - datetime.timedelta(days=now.day + 1)
+        then = self.now - datetime.timedelta(days=self.now.day + 1)
         _, ndays = calendar.monthrange(then.year, then.month)
         month_start = pytz.utc.localize(
             datetime.datetime(then.year, then.month, 1))
         month_end = pytz.utc.localize(
-            datetime.datetime(
-                then.year, then.month, min(now.day, ndays), now.hour, now.minute))
+            datetime.datetime(then.year, then.month,
+                              min(self.now.day, ndays),
+                              self.now.hour, self.now.minute))
         return self.aggregate(month_start, month_end)
 
 
