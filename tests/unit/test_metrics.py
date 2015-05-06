@@ -16,7 +16,7 @@ import datetime
 import pytz
 import decimal
 
-from skinflint.billreader import DetailedBillingReader
+from skinflint.billreader import DetailedBillReportReader
 from skinflint.slice import slicer
 
 
@@ -27,7 +27,7 @@ def get_billing_filepath(name):
 class TestMetrics(unittest.TestCase):
 
     def setUp(self):
-        dbr = DetailedBillingReader(get_billing_filepath('test.csv'))
+        dbr = DetailedBillReportReader(get_billing_filepath('test.csv'))
         self.sc = slicer(dbr)
         self.slice0_key = '2015-03-01 00:00:00+00:00-2015-03-01 01:00:00+00:00'
         self.slice1_key = '2015-03-01 01:00:00+00:00-2015-03-01 02:00:00+00:00'
@@ -55,17 +55,18 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(len(slice.metrics[0].data), 7)
         self.assertEqual(len(slice.metrics[1].data), 3)
         self.assertEqual(len(slice.metrics[2].data), 2)
+        print(slice.metrics[0].data)
         self.assertEqual(
-            slice.metrics[0].data['012345678901|ec2'],
+            slice.metrics[0].data['012345678901|EC2|usage'],
             decimal.Decimal('0.13200000'))
         self.assertEqual(
-            slice.metrics[0].data['234567890123|ec2'],
+            slice.metrics[0].data['234567890123|EC2|usage'],
             decimal.Decimal('0.28500000'))
         self.assertEqual(
-            slice.metrics[1].data['234567890123|ec2|m1.small'],
+            slice.metrics[1].data['234567890123|EC2|m1.small'],
             decimal.Decimal('0.07500000'))
         self.assertEqual(
-            slice.metrics[2].data['012345678901|simpledb|In'],
+            slice.metrics[2].data['012345678901|SimpleDB|In'],
             decimal.Decimal('0E-8'))
 
     def test_second_slice(self):
@@ -78,7 +79,7 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(len(slice.metrics[1].data), 0)
         self.assertEqual(len(slice.metrics[2].data), 0)
         self.assertEqual(
-            slice.metrics[0].data['012345678901|sqs'],
+            slice.metrics[0].data['012345678901|SQS|usage'],
             decimal.Decimal('0E-8'))
 
     def test_third_slice(self):
@@ -91,10 +92,10 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(len(slice.metrics[1].data), 2)
         self.assertEqual(len(slice.metrics[2].data), 0)
         self.assertEqual(
-            slice.metrics[0].data['012345678901|ec2'],
+            slice.metrics[0].data['012345678901|EC2|usage'],
             decimal.Decimal('0.48200000'))
         self.assertEqual(
-            slice.metrics[1].data['012345678901|ec2|m1.large'],
+            slice.metrics[1].data['012345678901|EC2|m1.large'],
             decimal.Decimal('0.35000000'))
 
     def test_aggregate(self):
@@ -116,21 +117,21 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(str(usage_metric), 'TotalUsage')
         result = usage_metric.query(account='234567890123')
         self.assertEqual(len(result), 3)
-        self.assertEqual(result['234567890123|dynamodb'],
-                         decimal.Decimal('1.70885000'))
+        self.assertEqual(result['234567890123|DynamoDB|usage'],
+                         decimal.Decimal('1.89673919'))
         result = usage_metric.query(account='234.*')
         self.assertEqual(len(result), 3)
-        self.assertEqual(result['234567890123|dynamodb'],
-                         decimal.Decimal('1.70885000'))
-        result = usage_metric.query(service='ec2')
+        self.assertEqual(result['234567890123|DynamoDB|usage'],
+                         decimal.Decimal('1.89673919'))
+        result = usage_metric.query(service='EC2')
         self.assertEqual(len(result), 2)
-        self.assertEqual(result['012345678901|ec2'],
+        self.assertEqual(result['012345678901|EC2|usage'],
                          decimal.Decimal('0.13200000'))
-        self.assertEqual(result['234567890123|ec2'],
+        self.assertEqual(result['234567890123|EC2|usage'],
                          decimal.Decimal('0.28500000'))
-        result = usage_metric.query(service='s.*')
+        result = usage_metric.query(service='S.*')
         self.assertEqual(len(result), 4)
-        self.assertEqual(result['234567890123|sqs'],
-                         decimal.Decimal('0.49266350'))
+        self.assertEqual(result['234567890123|SQS|usage'],
+                         decimal.Decimal('0.48793206'))
 
         
