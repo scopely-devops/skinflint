@@ -1,0 +1,107 @@
+---
+# The name of the generated Excel spreadsheet
+name: DailyReport
+# A directory where AWS billing files will be cached
+cache_dir: ./.skinflint
+# Excel formats used in the daily report Excel spreadsheet
+formats:
+    money:
+        num_format: "$#,##0"
+        font_size: 14
+    percent:
+        num_format: "0%"
+        font_size: 14
+    money_pos_big:
+        num_format: "$#,##0"
+        bg_color: "#FA6B6B"
+        font_size: 14
+    money_pos_small:
+        num_format: "$#,##0"
+        bg_color: "#FC8D8D"
+        font_size: 14
+    money_neg_big:
+        num_format: "$#,##0"
+        bg_color: "#20C948"
+        font_size: 14
+    money_neg_small:
+        num_format: "$#,##0"
+        bg_color: "#87FFA3"
+        font_size: 14
+    percent:
+        num_format: "0%"
+        font_size: 14
+    percent_pos_big:
+        num_format: "0%"
+        bg_color: "#FA6B6B"
+        font_size: 14
+    percent_pos_small:
+        num_format: "0%"
+        bg_color: "#FC8D8D"
+        font_size: 14
+    percent_neg_big:
+        num_format: "0%"
+        bg_color: "#20C948"
+        font_size: 14
+    percent_neg_small:
+        num_format: 0x09
+        bg_color: "#87FFA3"
+        font_size: "14"
+    bold:
+        bold: true
+        font_size: 14
+    topheader:
+        bg_color: "#DDDDDD"
+        italic: true
+        border: 1
+        align: center
+        font_size: 14
+    mergedheader:
+        bg_color: "#888888"
+        font_color: "#FFFFFF"
+        border: 1
+        align: center
+        bold: true
+        font_size: 14
+    header:
+        align: center
+        bold: true
+        font_size: 14
+# List of accounts
+#   key is the account ID
+#   name is a user-friendly name for the account
+#   profile is the name of the profile in your AWS config/credential file to
+#           use to access this account
+#   bucket is the S3 bucket where AWS billing data is stored
+#   consolidated_in is used for accounts that are consolidated into another
+#                   account since the data will show up there.
+accounts:
+  "123456789012":
+    name: Foo
+    profile: foo
+    bucket: foo-aws-billing-programmatic-access
+  "234567890123":
+    name: Bar
+    profile: bar
+    bucket: bar-aws-billing-programmatic-access
+  "345678901234":
+    name: Fie
+    consolidated_in: Bar
+  "456789012345":
+    name: Baz
+    consolidated_in: Bar
+# The monthly budgeted AWS costs, starting in January.
+budget:
+  - 1000
+  - 1100
+  - 1200
+  - 1300
+  - 1400
+  - 1500
+  - 1600
+  - 1700
+  - 1800
+  - 1900
+  - 2000
+  - 2100
+
+
