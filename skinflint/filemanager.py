@@ -61,7 +61,7 @@ class FileManager(object):
     def _check_key(self, key, file_name):
         if not os.path.isfile(file_name):
             LOG.debug('%s not in cache, downloading now', file_name)
-            self._download_and_unzip(key, file_name)
+            self._download_and_unzip(key)
             file_mod_time = self._get_file_modified_time(file_name)
         else:
             file_mod_time = self._get_file_modified_time(file_name)
